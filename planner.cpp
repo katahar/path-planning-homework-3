@@ -302,6 +302,12 @@ public:
         temp += ")";
         return temp;
     }
+    
+    bool preconditions_satisfied(Condition start_condition)
+    {
+        
+    }
+
 };
 
 struct ActionComparator
@@ -368,6 +374,22 @@ public:
         }
         throw runtime_error("Action " + name + " not found!");
     }
+
+    unordered_set<Action, ActionHasher, ActionComparator> get_actions() const 
+    {
+        return this->actions;
+    }
+
+    unordered_set<GroundedCondition, GroundedConditionHasher, GroundedConditionComparator> get_initial_conditions() const
+    {
+        return this->initial_conditions;
+    }
+    
+    unordered_set<GroundedCondition, GroundedConditionHasher, GroundedConditionComparator> get_goal_conditions() const
+    {
+        return this->goal_conditions;
+    }
+
     unordered_set<string> get_symbols() const
     {
         return this->symbols;
@@ -741,10 +763,14 @@ Env* create_env(char* filename)
     return env;
 }
 
+
+
+
 list<GroundedAction> planner(Env* env)
 {
     // this is where you insert your planner
-
+    env->get_symbols();
+    
     // blocks world example
     list<GroundedAction> actions;
     actions.push_back(GroundedAction("MoveToTable", { "A", "B" }));
