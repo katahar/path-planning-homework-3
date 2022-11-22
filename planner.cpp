@@ -231,25 +231,43 @@ private:
     unordered_set<Condition, ConditionHasher, ConditionComparator> preconditions;
     unordered_set<Condition, ConditionHasher, ConditionComparator> effects;
 
+    //used for evaluating preconditions/effects
+    unordered_map<string,string> symbol_map;
+
+
 public:
     Action(string name, list<string> args,
         unordered_set<Condition, ConditionHasher, ConditionComparator>& preconditions,
-        unordered_set<Condition, ConditionHasher, ConditionComparator>& effects)
+        unordered_set<Condition, ConditionHasher, ConditionComparator>& effects,
+        unordered_set<string> symbols)
     {
         this->name = name;
         for (string l : args)
         {
             this->args.push_back(l);
+            this->symbol_map[l] = l; //adding in action-specific symbols
         }
         for (Condition pc : preconditions)
         {
             this->preconditions.insert(pc);
+            // this->preconditions_tracker.push_back(false);
         }
         for (Condition pc : effects)
         {
             this->effects.insert(pc);
         }
+        
+        // printf("Enrolling original symbols\n");
+        // printf("Original: \t Remapped: \n");
+
+        for(string symbol: symbols)
+        {
+            symbol_map[symbol] = symbol; // adding in environmental symbols for mapping preconditions/effects
+            // cout<<symbol<<"\t"<<symbol_map[symbol]<<endl;
+        }
+        
     }
+
     string get_name() const
     {
         return this->name;
@@ -303,9 +321,58 @@ public:
         return temp;
     }
     
-    bool preconditions_satisfied(Condition start_condition)
+    //takes input args and updates the corresponding values in the list
+    list<string> get_remapped_args(list<string> original_args, unordered_map<string,string> sym_map)
     {
+        list<string> ret_list; 
+        for(auto o_arg : original_args)
+        {
+            ret_list.push_back(sym_map[o_arg]); //adds the new mapping to the return list
+        }
+
+        return ret_list;
+    }
+
+    void print_umap(unordered_map<string,string> sym_map)
+    {
+        printf("Remapped Arguments: \n");
+        printf("Original: \t Remapped: \n");
+        for(auto iter = sym_map.begin(); iter != sym_map.end(); iter++)
+        {
+            cout<< iter->first <<"\t\t"<< iter->second <<endl;
+        }
+    }
+
+    //will need to make an ungrounded version of this
+    bool preconditions_satisfied( unordered_set<GroundedCondition, GroundedConditionHasher, GroundedConditionComparator> beginning_state, list<string> input_args)
+    {
+
+        //create temporary copy of map
+        unordered_map<string,string> temp_symbol_map = symbol_map;
+
+        // update values in map to reflect input args (use temporary map)
+        auto input_iter = input_args.begin();
+        for(auto arg_iter = args.begin(); arg_iter != args.end(); arg_iter++)
+        {
+            // cout<< "replacing " <<  temp_symbol_map[arg_iter->data()] << " with " << input_iter->data() << endl; 
+            temp_symbol_map[arg_iter->data()] = input_iter->data(); //looks up key by arguments, and updates with the value of the input args 
+            // cout<< "    validating " <<  arg_iter->data() << " -> " << temp_symbol_map[arg_iter->data()] << endl; 
+            input_iter++;
+        }
+        // print_umap(temp_symbol_map);
+
         
+        // iterate over preconditions to determine whether the remapped version is present. If it is, continue searching, if not return false.
+        for(Condition pc: preconditions)
+        {
+            GroundedCondition temp_condition = GroundedCondition(pc.get_predicate(),this->get_remapped_args(pc.get_args(), temp_symbol_map) , pc.get_truth());
+            cout<<"search condition: " << temp_condition.toString() << endl;
+            if(beginning_state.find(temp_condition) == beginning_state.end())
+            {
+                return false;
+            }
+        }
+        return true;
     }
 
 };
@@ -333,6 +400,7 @@ private:
     unordered_set<GroundedCondition, GroundedConditionHasher, GroundedConditionComparator> goal_conditions;
     unordered_set<Action, ActionHasher, ActionComparator> actions;
     unordered_set<string> symbols;
+    // unordered_map<string,string> sym_map;
 
 public:
     void remove_initial_condition(GroundedCondition gc)
@@ -354,6 +422,7 @@ public:
     void add_symbol(string symbol)
     {
         symbols.insert(symbol);
+        // sym_map[symbol] = symbol;
     }
     void add_symbols(list<string> symbols)
     {
@@ -374,6 +443,11 @@ public:
         }
         throw runtime_error("Action " + name + " not found!");
     }
+
+    // unordered_map<string,string> get_sym_map()
+    // {
+    //     return this->sym_map;
+    // }
 
     unordered_set<Action, ActionHasher, ActionComparator> get_actions() const 
     {
@@ -741,7 +815,7 @@ Env* create_env(char* filename)
                     }
 
                     env->add_action(
-                        Action(action_name, parse_symbols(action_args), preconditions, effects));
+                        Action(action_name, parse_symbols(action_args), preconditions, effects, env->get_symbols()));
 
                     preconditions.clear();
                     effects.clear();
@@ -771,6 +845,28 @@ list<GroundedAction> planner(Env* env)
     // this is where you insert your planner
     env->get_symbols();
     
+    printf("\nTest 1: Should pass \n");
+    Action test_action = env->get_action("MoveToTable");
+    if(test_action.preconditions_satisfied(env->get_initial_conditions(),{ "A", "B" }))
+    {
+        printf("the preconditions have been satisfied.\n");
+    }
+    else
+    {
+        printf("the preconditions have NOT been satisfied\n");
+    }
+
+    printf("\nTest 2: Should fail \n");
+     test_action = env->get_action("MoveToTable");
+    if(test_action.preconditions_satisfied(env->get_initial_conditions(),{ "B", "A" }))
+    {
+        printf("the preconditions have been satisfied.\n");
+    }
+    else
+    {
+        printf("the preconditions have NOT been satisfied\n");
+    }
+
     // blocks world example
     list<GroundedAction> actions;
     actions.push_back(GroundedAction("MoveToTable", { "A", "B" }));
