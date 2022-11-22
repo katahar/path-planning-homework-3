@@ -362,10 +362,10 @@ public:
     void print_umap(unordered_map<string,string> sym_map)
     {
         printf("Remapped Arguments: \n");
-        printf("Original: \t Remapped: \n");
+        printf("\t Original: \t Remapped: \n");
         for(auto iter = sym_map.begin(); iter != sym_map.end(); iter++)
         {
-            cout<< iter->first <<"\t\t"<< iter->second <<endl;
+            cout<<"\t"<< iter->first <<"\t\t"<< iter->second <<endl;
         }
     }
 
@@ -375,18 +375,17 @@ public:
     }
 
     //will need to make an ungrounded version of this
-    bool preconditions_satisfied( unordered_set<GroundedCondition, GroundedConditionHasher, GroundedConditionComparator> beginning_state, list<string> input_args)
+    bool preconditions_satisfied( unordered_set<Condition, ConditionHasher, ConditionComparator> beginning_state, list<string> input_args)
     {
         
         unordered_map<string,string> temp_symbol_map = generate_symbol_map(input_args);
-        print_umap(temp_symbol_map);
-
+        // print_umap(temp_symbol_map);
         
         // iterate over preconditions to determine whether the remapped version is present. If it is, continue searching, if not return false.
         for(Condition pc: preconditions)
         {
-            GroundedCondition temp_condition = GroundedCondition(pc.get_predicate(),this->get_remapped_args(pc.get_args(), temp_symbol_map) , pc.get_truth());
-            cout<<"search condition: " << temp_condition.toString() << endl;
+            Condition temp_condition = Condition(pc.get_predicate(),this->get_remapped_args(pc.get_args(), temp_symbol_map) , pc.get_truth());
+            // cout<<"search condition: " << temp_condition.toString() << endl;
             if(beginning_state.find(temp_condition) == beginning_state.end())
             {
                 return false;
@@ -396,20 +395,34 @@ public:
     }
 
     //runs action and returns ending conditions
-    // unordered_set<Condition, ConditionHasher, ConditionComparator> execute_action(
-    //     unordered_set<GroundedCondition, GroundedConditionHasher, GroundedConditionComparator> beginning_state, 
-    //     list<string> input_args)
-    //     {
-    //         //create copy of start condition that will be modified and returned
-    //         unordered_set<Condition, ConditionHasher, ConditionComparator> end_conditions = beginning_state; 
+    unordered_set<Condition, ConditionHasher, ConditionComparator> execute_action(
+        unordered_set<Condition, ConditionHasher, ConditionComparator> beginning_state, 
+        list<string> input_args)
+        {
+            //create copy of start condition that will be modified and returned
+            unordered_set<Condition, ConditionHasher, ConditionComparator> end_conditions = beginning_state; 
 
-    //         //remap effect conditions with inputs
-            
+            //remap effect conditions with inputs
+            unordered_map<string,string> temp_symbol_map = generate_symbol_map(input_args);
+            // print_umap(temp_symbol_map);
 
-    //         //merge effect conditions with return conditions
+            //update end_conditions with the effects
+            for(Condition effect : effects)
+            {
+                if(effect.get_truth()) //if adding a condition
+                {
+                    Condition temp_condition = Condition(effect.get_predicate(),this->get_remapped_args(effect.get_args(), temp_symbol_map), effect.get_truth());
+                    end_conditions.insert(temp_condition);
+                }
+                else //if removing a condition
+                {
+                    Condition temp_condition = Condition(effect.get_predicate(),this->get_remapped_args(effect.get_args(), temp_symbol_map), true);
+                    end_conditions.erase(temp_condition);
+                }
+            }
 
-    //         return end_conditions;
-    //     }
+            return end_conditions;
+        }
 
 };
 
@@ -492,6 +505,31 @@ public:
     unordered_set<GroundedCondition, GroundedConditionHasher, GroundedConditionComparator> get_goal_conditions() const
     {
         return this->goal_conditions;
+    }
+
+    unordered_set<Condition, ConditionHasher, ConditionComparator> get_initial_ungrounded()
+    {
+        unordered_set<Condition, ConditionHasher, ConditionComparator> ret_val; 
+
+        for(auto ground_it:initial_conditions)
+        {
+            Condition temp_cond = Condition(ground_it.get_predicate(), ground_it.get_arg_values(), ground_it.get_truth());
+            ret_val.insert(temp_cond);
+        }
+
+        return ret_val;
+    }
+
+    unordered_set<Condition, ConditionHasher, ConditionComparator> get_goal_ungrounded()
+    {
+        unordered_set<Condition, ConditionHasher, ConditionComparator> ret_val; 
+
+        for(auto ground_it:goal_conditions)
+        {
+            Condition temp_cond = Condition(ground_it.get_predicate(), ground_it.get_arg_values(), ground_it.get_truth());
+            ret_val.insert(temp_cond);
+        }
+        return ret_val;
     }
 
     unordered_set<string> get_symbols() const
@@ -874,29 +912,36 @@ list<GroundedAction> planner(Env* env)
 {
     // this is where you insert your planner
     env->get_symbols();
+
+    unordered_set<Condition, ConditionHasher, ConditionComparator> start_ungrounded = env->get_initial_ungrounded(); 
     
-    printf("\nTest 1: Should pass \n");
+    // printf("\nChecking the preconditions. Should be satisfied. \n");
     Action test_action = env->get_action("MoveToTable");
-    if(test_action.preconditions_satisfied(env->get_initial_conditions(),{ "A", "B" }))
-    {
-        printf("the preconditions have been satisfied.\n");
-    }
-    else
-    {
-        printf("the preconditions have NOT been satisfied\n");
-    }
+    // if(test_action.preconditions_satisfied(env->get_initial_ungrounded(),{ "A", "B" }))
+    // {
+    //     printf("the preconditions have been satisfied.\n");
+    // }
+    // else
+    // {
+    //     printf("the preconditions have NOT been satisfied\n");
+    // }
 
-    printf("\nTest 2: Should fail \n");
-     test_action = env->get_action("MoveToTable");
-    if(test_action.preconditions_satisfied(env->get_initial_conditions(),{ "B", "A" }))
+    printf("========\n");
+    printf("Conditions before action: \n");
+    for(auto iter:start_ungrounded)
     {
-        printf("the preconditions have been satisfied.\n");
+        cout<< "\t" << iter.toString() << endl;
     }
-    else
-    {
-        printf("the preconditions have NOT been satisfied\n");
-    }
+    printf("\n");
 
+    std::cout << "executing action: " << test_action.toString()  << " with arguments {A,B}" << endl;
+
+    unordered_set<Condition, ConditionHasher, ConditionComparator> output_conditions = test_action.execute_action(env->get_initial_ungrounded(),{ "A", "B" });
+    printf("Conditions after action: \n"); 
+    for(auto iter:output_conditions)
+    {
+        cout<< "\t" << iter.toString() << endl;
+    }
     
     // blocks world example
     list<GroundedAction> actions;
