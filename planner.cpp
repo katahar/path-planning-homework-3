@@ -110,6 +110,8 @@ public:
         temp += ")";
         return temp;
     }
+
+  
 };
 
 struct GroundedConditionComparator
@@ -205,6 +207,7 @@ public:
         temp += ")";
         return temp;
     }
+
 };
 
 struct ConditionComparator
@@ -230,6 +233,9 @@ private:
     list<string> args;
     unordered_set<Condition, ConditionHasher, ConditionComparator> preconditions;
     unordered_set<Condition, ConditionHasher, ConditionComparator> effects;
+    
+    //added
+    int num_args; 
 
     //used for evaluating preconditions/effects
     unordered_map<string,string> symbol_map;
@@ -265,6 +271,8 @@ public:
             symbol_map[symbol] = symbol; // adding in environmental symbols for mapping preconditions/effects
             // cout<<symbol<<"\t"<<symbol_map[symbol]<<endl;
         }
+
+        this->num_args = args.size();
         
     }
 
@@ -321,7 +329,25 @@ public:
         return temp;
     }
     
-    //takes input args and updates the corresponding values in the list
+    //generates an updated symbol map given arguments
+    unordered_map<string,string> generate_symbol_map(list<string> input_args)
+    {
+        //create temporary copy of map
+        unordered_map<string,string> ret_symbol_map = symbol_map;
+
+        // update values in map to reflect input args (use temporary map)
+        auto input_iter = input_args.begin();
+        for(auto arg_iter = args.begin(); arg_iter != args.end(); arg_iter++)
+        {
+            // cout<< "replacing " <<  temp_symbol_map[arg_iter->data()] << " with " << input_iter->data() << endl; 
+            ret_symbol_map[arg_iter->data()] = input_iter->data(); //looks up key by arguments, and updates with the value of the input args 
+            // cout<< "    validating " <<  arg_iter->data() << " -> " << temp_symbol_map[arg_iter->data()] << endl; 
+            input_iter++;
+        }
+        return ret_symbol_map;
+    }
+
+    //takes input args and updates the corresponding values in the list using a symbol map
     list<string> get_remapped_args(list<string> original_args, unordered_map<string,string> sym_map)
     {
         list<string> ret_list; 
@@ -343,23 +369,17 @@ public:
         }
     }
 
+    int get_num_args()
+    {
+        return this->num_args;
+    }
+
     //will need to make an ungrounded version of this
     bool preconditions_satisfied( unordered_set<GroundedCondition, GroundedConditionHasher, GroundedConditionComparator> beginning_state, list<string> input_args)
     {
-
-        //create temporary copy of map
-        unordered_map<string,string> temp_symbol_map = symbol_map;
-
-        // update values in map to reflect input args (use temporary map)
-        auto input_iter = input_args.begin();
-        for(auto arg_iter = args.begin(); arg_iter != args.end(); arg_iter++)
-        {
-            // cout<< "replacing " <<  temp_symbol_map[arg_iter->data()] << " with " << input_iter->data() << endl; 
-            temp_symbol_map[arg_iter->data()] = input_iter->data(); //looks up key by arguments, and updates with the value of the input args 
-            // cout<< "    validating " <<  arg_iter->data() << " -> " << temp_symbol_map[arg_iter->data()] << endl; 
-            input_iter++;
-        }
-        // print_umap(temp_symbol_map);
+        
+        unordered_map<string,string> temp_symbol_map = generate_symbol_map(input_args);
+        print_umap(temp_symbol_map);
 
         
         // iterate over preconditions to determine whether the remapped version is present. If it is, continue searching, if not return false.
@@ -374,6 +394,22 @@ public:
         }
         return true;
     }
+
+    //runs action and returns ending conditions
+    // unordered_set<Condition, ConditionHasher, ConditionComparator> execute_action(
+    //     unordered_set<GroundedCondition, GroundedConditionHasher, GroundedConditionComparator> beginning_state, 
+    //     list<string> input_args)
+    //     {
+    //         //create copy of start condition that will be modified and returned
+    //         unordered_set<Condition, ConditionHasher, ConditionComparator> end_conditions = beginning_state; 
+
+    //         //remap effect conditions with inputs
+            
+
+    //         //merge effect conditions with return conditions
+
+    //         return end_conditions;
+    //     }
 
 };
 
@@ -400,7 +436,6 @@ private:
     unordered_set<GroundedCondition, GroundedConditionHasher, GroundedConditionComparator> goal_conditions;
     unordered_set<Action, ActionHasher, ActionComparator> actions;
     unordered_set<string> symbols;
-    // unordered_map<string,string> sym_map;
 
 public:
     void remove_initial_condition(GroundedCondition gc)
@@ -443,11 +478,6 @@ public:
         }
         throw runtime_error("Action " + name + " not found!");
     }
-
-    // unordered_map<string,string> get_sym_map()
-    // {
-    //     return this->sym_map;
-    // }
 
     unordered_set<Action, ActionHasher, ActionComparator> get_actions() const 
     {
@@ -867,6 +897,7 @@ list<GroundedAction> planner(Env* env)
         printf("the preconditions have NOT been satisfied\n");
     }
 
+    
     // blocks world example
     list<GroundedAction> actions;
     actions.push_back(GroundedAction("MoveToTable", { "A", "B" }));
