@@ -1006,6 +1006,15 @@ class symbo_planner
                 {
                     return get_g();
                 }
+                
+                bool operator==(const symbo_node &obj2) const
+                {
+                    if(this->state == obj2.state)
+                    {
+                        return true;
+                    }
+                        return false;
+                }
         };
 
         struct compareFvals
@@ -1129,8 +1138,10 @@ class symbo_planner
             return combinations;
         }
 
-        void get_neighbors(unordered_set<Condition, ConditionHasher, ConditionComparator> start_cond)
+        vector<symbo_node*> get_neighbors(unordered_set<Condition, ConditionHasher, ConditionComparator> start_cond)
         {
+            vector<symbo_node*> neighbors; 
+
             printf("Generating possible actions for start condition...\n");
             for(auto act : actions) //iterating over all actions
             {
@@ -1155,11 +1166,8 @@ class symbo_planner
                         }
                         printf(")\n");
                         printf("\t   Condition satisfied!\n");
-                        
-                    }
-                    else
-                    {
-                        // printf("\t   NOT satisfied!\n");
+                        symbo_node* node = new symbo_node(act.toString(), input, nullptr, start_cond); //update parent argument
+                        neighbors.push_back(node);
                     }
                 }
             }
