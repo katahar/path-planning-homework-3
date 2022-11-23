@@ -1075,11 +1075,16 @@ class symbo_planner
             cout << "] " << endl;
         }
 
-        //generates combinations of k symbols
+        //generates (all permutations)  of k symbols
         void k_combos(const vector<string> symbols, vector<list<string>> &combos, list<string> temp, int offset, int k)
         {
             if (k == 0) {
-                combos.push_back(temp);
+                // temp.sort(); //moved to sort the symbols on import
+                do //once a unique combination is generated, also add the permutations of that set
+                {
+                    combos.push_back(temp);
+                }while(next_permutation(temp.begin(), temp.end()));
+                // combos.push_back(temp);
                 return;
             }
             for (int i = offset; i <= symbols.size() - k; ++i) 
@@ -1101,6 +1106,7 @@ class symbo_planner
                 this->goal_condition = goal;
                 this->start_condition = start; 
                 this->symbols = uset_to_vec(sym);
+                sort(symbols.begin(),symbols.end() ); //sorts symbols lexicographically so that permutations can take place.
                 this->actions = actions_in;
             }
 
@@ -1111,7 +1117,7 @@ class symbo_planner
             list<string> tempo;
             k_combos(symbols, combinations, tempo, 0, num_symbols);
 
-            if(true)
+            if(false)
             {
                 printf("Complete.\n");
                 for(int i = 0; i < combinations.size(); ++i)
@@ -1123,6 +1129,41 @@ class symbo_planner
             return combinations;
         }
 
+        void get_neighbors(unordered_set<Condition, ConditionHasher, ConditionComparator> start_cond)
+        {
+            printf("Generating possible actions for start condition...\n");
+            for(auto act : actions) //iterating over all actions
+            {
+                vector<list<string>> ac_inputs = generate_sym_combos(act.get_num_args());
+                cout << "\nevaluating action " << act.toString() << ", " << act.get_num_args() << " inputs , "<< ac_inputs.size() << " generated combos " << endl;
+                for(auto input: ac_inputs)
+                {
+                    // cout << "\t input ( ";
+                    // for(auto l : input)
+                    // {
+                    //     cout << l << " "; 
+                    // }
+                    // printf(")\n");
+
+                    if(act.preconditions_satisfied(start_cond,input))
+                    {
+                        // cout<< act.toString();
+                        cout << "\t input ( ";
+                        for(auto l : input)
+                        {
+                            cout << l << " "; 
+                        }
+                        printf(")\n");
+                        printf("\t   Condition satisfied!\n");
+                        
+                    }
+                    else
+                    {
+                        // printf("\t   NOT satisfied!\n");
+                    }
+                }
+            }
+        }
 };
 
 list<GroundedAction> planner(Env* env)
@@ -1130,10 +1171,13 @@ list<GroundedAction> planner(Env* env)
     // this is where you insert your planner
     symbo_planner symbolic_planner = symbo_planner(env->get_initial_ungrounded(), env->get_goal_ungrounded(), env->get_symbols(), env->get_actions());
 
+    printf("\n\n**** Debugging Area **** \n\n");
     // printf("\nChecking the preconditions. Should be satisfied. \n");
     Action test_action = env->get_action("MoveToTable");
 
-    symbolic_planner.generate_sym_combos(test_action.get_num_args());
+    // symbolic_planner.generate_sym_combos(test_action.get_num_args());
+
+    symbolic_planner.get_neighbors(env->get_initial_ungrounded());
 
     // printf("========\n");
     // printf("Conditions before action: \n");
@@ -1152,6 +1196,7 @@ list<GroundedAction> planner(Env* env)
     //     cout<< "\t" << iter.toString() << endl;
     // }
     
+    printf("\n**** End of Debugging Area **** \n\n\n");
     // blocks world example
     list<GroundedAction> actions;
     actions.push_back(GroundedAction("MoveToTable", { "A", "B" }));
