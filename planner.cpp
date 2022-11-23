@@ -8,6 +8,7 @@
 #include <unordered_map>
 #include <algorithm>
 #include <stdexcept>
+#include <queue>
 
 #define SYMBOLS 0
 #define INITIAL 1
@@ -908,40 +909,248 @@ Env* create_env(char* filename)
 
 
 
+class symbo_planner
+{
+    private:
+        class symbo_node
+        {
+            protected:
+                string prev_action;
+                list<string> prev_action_inputs;
+                vector<symbo_node*> children;
+                symbo_node* parent;
+                unordered_set<Condition, ConditionHasher, ConditionComparator> state;
+                int cost = 0;
+                int h = 0; 
+                int f = 0; 
+            
+            public: 
+                symbo_node()
+                {
+                    //do nothing
+                }
+                symbo_node(string prev_action_in,
+                    list<string> prev_action_inputs_in, 
+                    symbo_node* parent_in, 
+                    unordered_set<Condition, ConditionHasher, ConditionComparator> state_in)
+                    {
+                        this->prev_action = prev_action_in;
+                        this->prev_action_inputs = prev_action_inputs_in;
+                        this->state = state_in;
+                        this->parent = parent_in;
+                    }
+                
+                void update_f()
+                {
+                    this->f = cost + h; 
+                }
+                
+                void set_cost(int in_cost)
+                {
+                    this->cost = in_cost; 
+                    update_f();
+                }
+
+                void set_h(int in_h)
+                {
+                    this->h = in_h; 
+                    update_f();
+                }
+
+                void add_child(symbo_node* child_in)
+                {
+                    children.push_back(child_in);
+                }
+
+                unordered_set<Condition, ConditionHasher, ConditionComparator> get_state()
+                {
+                    return state;
+                }
+
+                string get_prev_action()
+                {
+                    return prev_action;
+                }
+
+                list<string> get_prev_inputs()
+                {
+                    return prev_action_inputs;
+                }
+
+                vector<symbo_node*> get_children()
+                {
+                    return children;
+                }
+
+                symbo_node* get_parent()
+                {
+                    return parent;
+                }
+
+                int get_h()
+                {
+                    return h;
+                }
+
+                int get_f()
+                {
+                    return f; 
+                }
+
+                int get_g()
+                {
+                    return cost;
+                }
+
+                int get_cost()
+                {
+                    return get_g();
+                }
+        };
+
+        struct compareFvals
+        {
+            bool operator()(symbo_node* const& left, symbo_node* const& right) const
+            {
+                if(left->get_f() != right->get_f())
+                {
+                    return left->get_f() < right->get_f();
+                }
+                else
+                {
+                    //tie-breaking if f is the same
+                    return left->get_h() > right->get_h();
+                }
+            }     
+        };
+        // sets which automatically sorts 
+        set<symbo_node*, compareFvals> open_list;
+        unordered_set<symbo_node*> tree;
+        unordered_set<Condition, ConditionHasher, ConditionComparator> start_condition;
+        unordered_set<Condition, ConditionHasher, ConditionComparator> goal_condition; 
+        vector<string> symbols; //vector instead of unordered set for ease of indexing in generating combinations
+        unordered_set<Action, ActionHasher, ActionComparator> actions;
+
+        symbo_node* get_next_from_open()
+        {
+            //pointer dissociates from iterator
+            symbo_node* node = *open_list.begin();
+            
+            //erases value extracted from open list
+            open_list.erase(open_list.begin());
+
+            return node;
+        }
+
+        void add_to_open(symbo_node* node)
+        {
+            open_list.insert(node);
+        }  
+
+        //returns the h value of the input node
+        int calculate_h(symbo_node* node)
+        {
+            return 0;
+        } 
+
+        vector<string> uset_to_vec(unordered_set<string> in_list)
+        {
+            vector<string> ret_vec; 
+            for(auto s : in_list)
+            {
+                ret_vec.push_back(s);
+            }
+            return ret_vec;
+        }
+
+        void print_set(const list<string>& v) 
+        {
+            static int count = 0;
+            count++;
+            cout << "combination number " << count << ": [ ";
+            for (auto sym : v) 
+            { 
+                cout << sym << " ";
+            }
+            cout << "] " << endl;
+        }
+
+        //generates combinations of k symbols
+        void k_combos(const vector<string> symbols, vector<list<string>> &combos, list<string> temp, int offset, int k)
+        {
+            if (k == 0) {
+                combos.push_back(temp);
+                return;
+            }
+            for (int i = offset; i <= symbols.size() - k; ++i) 
+            {
+                temp.push_back(symbols[i]);
+                k_combos(symbols, combos, temp, i+1, k-1);
+                temp.pop_back();
+            }
+        }
+
+
+
+    public: 
+        symbo_planner(unordered_set<Condition, ConditionHasher, ConditionComparator> start, 
+            unordered_set<Condition, ConditionHasher, ConditionComparator> goal, 
+            unordered_set<string> sym, 
+            unordered_set<Action, ActionHasher, ActionComparator> actions_in)
+            {
+                this->goal_condition = goal;
+                this->start_condition = start; 
+                this->symbols = uset_to_vec(sym);
+                this->actions = actions_in;
+            }
+
+        // adapted from https://stackoverflow.com/questions/12991758/creating-all-possible-k-combinations-of-n-items-in-c
+        vector<list<string>> generate_sym_combos(int num_symbols)
+        {
+            vector<list<string>> combinations;
+            list<string> tempo;
+            k_combos(symbols, combinations, tempo, 0, num_symbols);
+
+            if(true)
+            {
+                printf("Complete.\n");
+                for(int i = 0; i < combinations.size(); ++i)
+                {
+                    print_set(combinations[i]);
+                }
+            }
+
+            return combinations;
+        }
+
+};
+
 list<GroundedAction> planner(Env* env)
 {
     // this is where you insert your planner
-    env->get_symbols();
+    symbo_planner symbolic_planner = symbo_planner(env->get_initial_ungrounded(), env->get_goal_ungrounded(), env->get_symbols(), env->get_actions());
 
-    unordered_set<Condition, ConditionHasher, ConditionComparator> start_ungrounded = env->get_initial_ungrounded(); 
-    
     // printf("\nChecking the preconditions. Should be satisfied. \n");
     Action test_action = env->get_action("MoveToTable");
-    // if(test_action.preconditions_satisfied(env->get_initial_ungrounded(),{ "A", "B" }))
+
+    symbolic_planner.generate_sym_combos(test_action.get_num_args());
+
+    // printf("========\n");
+    // printf("Conditions before action: \n");
+    // for(auto iter:start_ungrounded)
     // {
-    //     printf("the preconditions have been satisfied.\n");
+    //     cout<< "\t" << iter.toString() << endl;
     // }
-    // else
+    // printf("\n");
+
+    // std::cout << "executing action: " << test_action.toString()  << " with arguments {A,B}" << endl;
+
+    // unordered_set<Condition, ConditionHasher, ConditionComparator> output_conditions = test_action.execute_action(env->get_initial_ungrounded(),{ "A", "B" });
+    // printf("Conditions after action: \n"); 
+    // for(auto iter:output_conditions)
     // {
-    //     printf("the preconditions have NOT been satisfied\n");
+    //     cout<< "\t" << iter.toString() << endl;
     // }
-
-    printf("========\n");
-    printf("Conditions before action: \n");
-    for(auto iter:start_ungrounded)
-    {
-        cout<< "\t" << iter.toString() << endl;
-    }
-    printf("\n");
-
-    std::cout << "executing action: " << test_action.toString()  << " with arguments {A,B}" << endl;
-
-    unordered_set<Condition, ConditionHasher, ConditionComparator> output_conditions = test_action.execute_action(env->get_initial_ungrounded(),{ "A", "B" });
-    printf("Conditions after action: \n"); 
-    for(auto iter:output_conditions)
-    {
-        cout<< "\t" << iter.toString() << endl;
-    }
     
     // blocks world example
     list<GroundedAction> actions;
