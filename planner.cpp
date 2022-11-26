@@ -1192,18 +1192,14 @@ class symbo_planner
         //returns the h value of the input node
         int calculate_h(symbo_node* node)
         {
-            if(!is_heuristic)
+            if(!is_heuristic && false) //removing for speed
             {
                 // printf("++++++++++++++++++++ HEURISTIC++++++++++++++++\n");
                 symbo_planner temp = *this;
-                // printf("%s, %d \n", __FUNCTION__, __LINE__);
                 heuristic_planner = &temp;
-                // printf("%s, %d \n", __FUNCTION__, __LINE__);
                 heuristic_planner->heuristic_reset(node);
-                // printf("%s, %d \n", __FUNCTION__, __LINE__);
                 heuristic_planner->generate_tree();
-                // printf("%s, %d \n", __FUNCTION__, __LINE__);
-                // cout << "Heuristic value " << heuristic_planner->get_goal_ct() <<endl;
+                cout << "Heuristic value " << heuristic_planner->get_goal_ct() <<endl;
                 // printf("++++++++++++++++++++ HEURISTIC END++++++++++++++++\n");
 
                 return heuristic_planner->get_goal_ct();
@@ -1322,6 +1318,7 @@ class symbo_planner
                         unordered_set<Condition, ConditionHasher, ConditionComparator> effect_state;
                         if(!is_heuristic)
                         {
+
                             effect_state = act.execute_action(parent_node->get_state(),input);
                         }
                         else
@@ -1332,10 +1329,18 @@ class symbo_planner
                         symbo_node* node = new symbo_node(act.toString(), input, parent_node, effect_state, id_tracker++, parent_node->get_count()+1); 
                         if(!in_closed(node)) //evaluate if not in the closed list 
                         {
-
-                            // printf("\t   Adding as valid action/state!\n");
                             if(false)
                             {
+                                cout << "\nevaluating action " << act.toString()  << endl;
+
+                                cout << "\t input ( ";
+                                for(auto l : input)
+                                {
+                                    cout << l << " "; 
+                                }
+                                printf(")\n");
+                                printf("\t   Adding as valid action/state!\n");
+
                                 printf("\t   output is: ");
                                 for(auto es : effect_state)
                                 {
@@ -1374,7 +1379,7 @@ class symbo_planner
             vector<symbo_node*> neighbors = generate_neighbors(parent_node);
             for(auto neighbor: neighbors)
             {
-                update_costs(neighbor, parent_node->get_cost(), 2*calculate_h(neighbor));
+                update_costs(neighbor, parent_node->get_cost(), 3*calculate_h(neighbor));
                 // neighbor->print_full_prev_action_string();
                 // printf("Adding to open: ");
                 // neighbor->print_state(); 
@@ -1502,16 +1507,6 @@ class symbo_planner
                 sort(symbols.begin(),symbols.end() ); //sorts symbols lexicographically so that permutations can take place.
                 this->actions = actions_in;
             }
-        
-        // symbo_planner(unordered_set<Condition, ConditionHasher, ConditionComparator> goal, 
-        //     unordered_set<string> sym, 
-        //     unordered_set<Action, ActionHasher, ActionComparator> actions_in)
-        // {
-        //     this->goal_condition = goal;
-        //     this->symbols = uset_to_vec(sym);
-        //     sort(symbols.begin(),symbols.end() ); //sorts symbols lexicographically so that permutations can take place.
-        //     this->actions = actions_in;
-        // }
 
         void generate_tree()
         {
