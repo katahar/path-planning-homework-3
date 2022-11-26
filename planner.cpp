@@ -10,6 +10,8 @@
 #include <stdexcept>
 #include <queue>
 #include <cassert>
+#include <math.h>       /* ceil */
+#include <chrono>
 
 
 #define SYMBOLS 0
@@ -422,6 +424,35 @@ public:
                     Condition temp_condition = Condition(effect.get_predicate(),this->get_remapped_args(effect.get_args(), temp_symbol_map), true);
                     end_conditions.erase(temp_condition);
                 }
+            }
+
+            return end_conditions;
+        }
+
+    unordered_set<Condition, ConditionHasher, ConditionComparator> execute_action_no_removal(
+        unordered_set<Condition, ConditionHasher, ConditionComparator> beginning_state, 
+        list<string> input_args)
+        {
+            //create copy of start condition that will be modified and returned
+            unordered_set<Condition, ConditionHasher, ConditionComparator> end_conditions = beginning_state; 
+
+            //remap effect conditions with inputs
+            unordered_map<string,string> temp_symbol_map = generate_symbol_map(input_args);
+            // print_umap(temp_symbol_map);
+
+            //update end_conditions with the effects
+            for(Condition effect : effects)
+            {
+                if(effect.get_truth()) //if adding a condition
+                {
+                    Condition temp_condition = Condition(effect.get_predicate(),this->get_remapped_args(effect.get_args(), temp_symbol_map), effect.get_truth());
+                    end_conditions.insert(temp_condition);
+                }
+                // else //if removing a condition
+                // {
+                //     Condition temp_condition = Condition(effect.get_predicate(),this->get_remapped_args(effect.get_args(), temp_symbol_map), true);
+                //     end_conditions.erase(temp_condition);
+                // }
             }
 
             return end_conditions;
@@ -926,6 +957,8 @@ class symbo_planner
                 int cost = 0; // g value, cumulative
                 int h = 0; 
                 int f = 0; 
+                bool is_start = false;
+                int count_id;  
             
             public: 
                 symbo_node()
@@ -936,15 +969,20 @@ class symbo_planner
                     list<string> prev_action_inputs_in, 
                     symbo_node* parent_in, 
                     unordered_set<Condition, ConditionHasher, ConditionComparator> state_in, 
-                    int id)
+                    int id, int count)
                     {
                         this->prev_action = prev_action_in;
                         this->prev_action_inputs = prev_action_inputs_in;
                         this->state = state_in;
                         this->parent = parent_in;
                         this->id = id;
+                        this->count_id = count; 
                     }
                 
+                int get_count()
+                {
+                    return this->count_id;
+                }
                 void update_f()
                 {
                     this->f = cost + h; 
@@ -1036,6 +1074,16 @@ class symbo_planner
                 {
                     return this->id;
                 }
+
+                bool get_is_start()
+                {
+                    return this->is_start;
+                }
+
+                void set_is_start(bool start)
+                {
+                    this->is_start = start;
+                }
         };
 
         struct compareFvals
@@ -1057,14 +1105,23 @@ class symbo_planner
         // set<symbo_node*, compareFvals> open_list;
         std::priority_queue<symbo_node*, std::vector<symbo_node*>, compareFvals> open_list; 
         unordered_set<symbo_node*> closed_list;
-        unordered_set<symbo_node*> tree;
+        unordered_set<symbo_node*> tree; //not really used.
         unordered_set<Condition, ConditionHasher, ConditionComparator> start_condition;
         unordered_set<Condition, ConditionHasher, ConditionComparator> goal_condition; 
         vector<string> symbols; //vector instead of unordered set for ease of indexing in generating combinations
         unordered_set<Action, ActionHasher, ActionComparator> actions;
+        list<GroundedAction> final_plan;
+        chrono::time_point<chrono::system_clock> startTime;
+        bool is_heuristic = false;
+        int goal_ct = -1;
+
         bool goal_found = false;
         int id_tracker = 0; 
 
+        symbo_planner()
+        {
+
+        }
         symbo_node* get_next_from_open()
         {
             //pointer dissociates from iterator
@@ -1092,14 +1149,14 @@ class symbo_planner
         //         std::cout << "insert FIALED\n";
         //    }
             open_list.push(node);
-            print_open();
+            // print_open();
         }  
 
         void print_open()
         {
             std::priority_queue<symbo_node*, std::vector<symbo_node*>, compareFvals> temp_OL; 
 
-            printf("Open list: (%d)\n", open_list.size());
+            // printf("Open list: (%d)\n", open_list.size());
             // for(auto node: open_list)
             // {
             //     printf("\t");
@@ -1114,12 +1171,52 @@ class symbo_planner
             }
         }
 
+        void heuristic_reset(symbo_node* start)
+        {
+            closed_list.clear();
+            tree.clear();
+            start_condition = start->get_state();
+            start_timer();
+            is_heuristic = true;
+            id_tracker = 0; 
+
+        }
+
         //@TODO: Update heuristic function
         //returns the h value of the input node
         int calculate_h(symbo_node* node)
         {
-            return 0;
+            if(!is_heuristic)
+            {
+                // printf("++++++++++++++++++++ HEURISTIC++++++++++++++++\n");
+                symbo_planner heuristic_planner = *this;
+                heuristic_planner.heuristic_reset(node);
+                heuristic_planner.generate_tree();
+                cout << "Heuristic value " << heuristic_planner.get_goal_ct() <<endl;
+                // printf("++++++++++++++++++++ HEURISTIC END++++++++++++++++\n");
+
+                return heuristic_planner.get_goal_ct();
+            }
+            else 
+            {
+                return goal_diff(node);
+            }
+
         } 
+
+        int goal_diff(symbo_node* node)
+        {
+            int count = 0;
+            unordered_set<Condition, ConditionHasher, ConditionComparator> node_cond = node->get_state();
+            for(auto cond : goal_condition)
+            {
+                if(find(node_cond.begin(), node_cond.end(), cond)!= node_cond.end()) //condition satisfied
+                {
+                    count++;
+                }
+            }
+            return count;
+        }
 
         vector<string> uset_to_vec(unordered_set<string> in_list)
         {
@@ -1169,10 +1266,10 @@ class symbo_planner
             {
                 if(node->get_state() == iter->get_state())
                 {
-                    printf("new:    ");
-                    node->print_state();
-                    printf("closed: ");
-                    iter->print_state();
+                    // printf("new:    ");
+                    // node->print_state();
+                    // printf("closed: ");
+                    // iter->print_state();
                     return true;
 
                 }
@@ -1187,49 +1284,62 @@ class symbo_planner
 
         vector<symbo_node*> generate_neighbors(symbo_node* parent_node)
         {
-            vector<symbo_node*> neighbors; 
+            vector<symbo_node*> neighbors;     
 
             // printf("Generating possible actions for start condition...\n");
             for(auto act : actions) //iterating over all actions
             {
                 vector<list<string>> ac_inputs = generate_sym_combos(act.get_num_args());
-                cout << "\nevaluating action " << act.toString() << ", " << act.get_num_args() << " inputs , "<< ac_inputs.size() << " generated combos " << endl;
+                // cout << "\nevaluating action " << act.toString() << ", " << act.get_num_args() << " inputs , "<< ac_inputs.size() << " generated combos " << endl;
                 for(auto input: ac_inputs)
                 {
-                    cout << "\t input( ";
-                    for(auto l : input)
-                    {
-                        cout << l << " "; 
-                    }
-                    printf(")\n");
+                    // cout << "\t input( ";
+                    // for(auto l : input)
+                    // {
+                    //     cout << l << " "; 
+                    // }
+                    // printf(")\n");
 
                     if(act.preconditions_satisfied(parent_node->get_state(),input))
                     {
-                        cout << "\t input ( ";
-                        for(auto l : input)
+                        // cout << "\t input ( ";
+                        // for(auto l : input)
+                        // {
+                        //     cout << l << " "; 
+                        // }
+                        // printf(")\n");
+                        unordered_set<Condition, ConditionHasher, ConditionComparator> effect_state;
+                        if(!is_heuristic)
                         {
-                            cout << l << " "; 
+                            effect_state = act.execute_action(parent_node->get_state(),input);
                         }
-                        printf(")\n");
-                        unordered_set<Condition, ConditionHasher, ConditionComparator> effect_state = act.execute_action(parent_node->get_state(),input);
-                        symbo_node* node = new symbo_node(act.toString(), input, parent_node, effect_state, id_tracker++); 
+                        else
+                        {
+                            effect_state = act.execute_action_no_removal(parent_node->get_state(),input);
+                        }
+
+                        symbo_node* node = new symbo_node(act.toString(), input, parent_node, effect_state, id_tracker++, parent_node->get_count()+1); 
                         if(!in_closed(node)) //evaluate if not in the closed list 
                         {
 
-                            printf("\t   Adding as valid action/state!\n");
-                            printf("\t   output is: ");
-                            for(auto es : effect_state)
+                            // printf("\t   Adding as valid action/state!\n");
+                            if(false)
                             {
-                                cout << " " << es.toString();
+                                printf("\t   output is: ");
+                                for(auto es : effect_state)
+                                {
+                                    cout << " " << es.toString();
+                                }
+                                printf("\n");
                             }
-                            printf("\n");
+                            
 
                             parent_node->add_child(node); //bidirectionality
                             neighbors.push_back(node);
                         }
                         else
                         {
-                            cout<< "Node " << node->get_id() << " is in the closed list!!!!!!" << endl;
+                            // cout<< "Node " << node->get_id() << " is in the closed list!!!!!!" << endl;
                             delete node;
                         }
 
@@ -1241,18 +1351,21 @@ class symbo_planner
 
         void evaluate_neighbors(symbo_node* parent_node)
         {
-            printf("\n-------\nEvaluating (%d)state ", parent_node->get_id());
-            for(auto es : parent_node->get_state())
+            if(false)
             {
-                cout << " " << es.toString();
+                printf("\n-------\nEvaluating (%d)state ", parent_node->get_id());
+                for(auto es : parent_node->get_state())
+                {
+                    cout << " " << es.toString();
+                }
+                printf("\n");
             }
-            printf("\n");
             vector<symbo_node*> neighbors = generate_neighbors(parent_node);
             for(auto neighbor: neighbors)
             {
                 update_costs(neighbor, parent_node->get_cost(), calculate_h(neighbor));
-                printf("Adding to open: ");
-                neighbor->print_state(); 
+                // printf("Adding to open: ");
+                // neighbor->print_state(); 
                 add_to_open(neighbor);
             }
         }
@@ -1296,7 +1409,67 @@ class symbo_planner
             return combinations;
         }
 
-       
+        void generate_plan(symbo_node* goal_node)
+        {
+            if(nullptr != goal_node)
+            {
+                vector<tuple<string, list<string>>> plan_vec; 
+                printf("Populating path...\n");
+                cout << "goal count is " << goal_node->get_count() << endl;
+                
+                symbo_node* current = new symbo_node();
+                current = goal_node;
+
+                symbo_node* prev = new symbo_node();
+                prev = goal_node->get_parent();
+
+                while(!(prev->get_is_start()))
+                {
+                    string prev_action_full = current->get_prev_action();
+                    int substring_ind = prev_action_full.find("(");
+                    tuple<string, list<string>> act_pair(prev_action_full.substr(0,substring_ind), current->get_prev_inputs());
+                    plan_vec.insert(plan_vec.begin(), act_pair);
+                    // cout << "pushing back node  " << current->get_count() << endl;
+
+
+                    current = prev;
+                    prev = current->get_parent();
+                }
+                    string prev_action_full = current->get_prev_action();
+                    int substring_ind = prev_action_full.find("(");
+                    tuple<string, list<string>> act_pair(prev_action_full.substr(0,substring_ind), current->get_prev_inputs());
+                    plan_vec.insert(plan_vec.begin(), act_pair);
+                    // cout << "pushing back node  " << current->get_count() << endl;
+
+
+                //generating list of groundedActions
+                for(auto ac_pr: plan_vec)
+                {
+                    final_plan.push_back(GroundedAction(get<0>(ac_pr), get<1>(ac_pr)));
+                }
+                printf("Population complete \n");
+                // return actions;
+            }
+            else 
+            {
+                printf("No goal found Failed to generate plan!\n");
+            }
+
+        }
+
+        void start_timer()
+        {
+            startTime = std::chrono::system_clock::now();
+        }
+        
+        double cumulative_time()
+        {
+            std::chrono::time_point<std::chrono::system_clock> curTime = std::chrono::system_clock::now();
+            return ceil(std::chrono::duration_cast<std::chrono::milliseconds>(curTime - startTime).count()/1000);
+        }
+
+
+
 
     public: 
         symbo_planner(unordered_set<Condition, ConditionHasher, ConditionComparator> start, 
@@ -1313,8 +1486,11 @@ class symbo_planner
 
         void generate_tree()
         {
-            symbo_node* start = new symbo_node("NONE", {"NONE", "NONE"}, nullptr, start_condition, this->id_tracker++);
+            start_timer();
+            symbo_node* start = new symbo_node("NONE", {"NONE", "NONE"}, nullptr, start_condition, this->id_tracker++,0);
+            start->set_is_start(true);
             add_to_open(start);
+            symbo_node* goal_node = nullptr; 
 
             while( (open_list.size() != 0) && !goal_found)
             {
@@ -1326,13 +1502,20 @@ class symbo_planner
                     if(is_goal(current))
                     {
                         goal_found = true;
+                        goal_node = current;
                     }
                 }
             }
-
-            if(goal_found)
+            
+            if(is_heuristic && goal_found )
             {
-                printf("the goal has been found! :D\n");
+                goal_ct = goal_node->get_count();
+            }
+            else if(!is_heuristic && goal_found)
+            {
+                printf("\n\nthe goal has been found! :D\n");
+                generate_plan(goal_node);
+                cout << "time elapsed:"  << cumulative_time() <<endl;
             }
             else if(open_list.size() == 0)
             {
@@ -1342,7 +1525,21 @@ class symbo_planner
             {
                 printf("ERROR IDKY\n");
             }
+
+
         }
+
+        list<GroundedAction> get_plan()
+        {
+            return this->final_plan;
+        }
+
+        int get_goal_ct()
+        {
+            return this->goal_ct;
+        }
+        
+
 
 
 };
@@ -1353,36 +1550,12 @@ list<GroundedAction> planner(Env* env)
     symbo_planner symbolic_planner = symbo_planner(env->get_initial_ungrounded(), env->get_goal_ungrounded(), env->get_symbols(), env->get_actions());
 
     printf("\n\n**** Debugging Area **** \n\n");
-    // printf("\nChecking the preconditions. Should be satisfied. \n");
-    // Action test_action = env->get_action("MoveToTable");
-
-    // symbolic_planner.generate_sym_combos(test_action.get_num_args());
 
     symbolic_planner.generate_tree();
-
-    // printf("========\n");
-    // printf("Conditions before action: \n");
-    // for(auto iter:start_ungrounded)
-    // {
-    //     cout<< "\t" << iter.toString() << endl;
-    // }
-    // printf("\n");
-
-    // std::cout << "executing action: " << test_action.toString()  << " with arguments {A,B}" << endl;
-
-    // unordered_set<Condition, ConditionHasher, ConditionComparator> output_conditions = test_action.execute_action(env->get_initial_ungrounded(),{ "A", "B" });
-    // printf("Conditions after action: \n"); 
-    // for(auto iter:output_conditions)
-    // {
-    //     cout<< "\t" << iter.toString() << endl;
-    // }
     
     printf("\n**** End of Debugging Area **** \n\n\n");
     // blocks world example
-    list<GroundedAction> actions;
-    actions.push_back(GroundedAction("MoveToTable", { "A", "B" }));
-    actions.push_back(GroundedAction("Move", { "C", "Table", "A" }));
-    actions.push_back(GroundedAction("Move", { "B", "Table", "C" }));
+    list<GroundedAction> actions = symbolic_planner.get_plan();
 
     return actions;
 }
