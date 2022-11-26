@@ -9,6 +9,8 @@
 #include <algorithm>
 #include <stdexcept>
 #include <queue>
+#include <cassert>
+
 
 #define SYMBOLS 0
 #define INITIAL 1
@@ -919,8 +921,9 @@ class symbo_planner
                 list<string> prev_action_inputs;
                 vector<symbo_node*> children;
                 symbo_node* parent;
+                int id = -1;
                 unordered_set<Condition, ConditionHasher, ConditionComparator> state;
-                int cost = 0;
+                int cost = 0; // g value, cumulative
                 int h = 0; 
                 int f = 0; 
             
@@ -932,12 +935,14 @@ class symbo_planner
                 symbo_node(string prev_action_in,
                     list<string> prev_action_inputs_in, 
                     symbo_node* parent_in, 
-                    unordered_set<Condition, ConditionHasher, ConditionComparator> state_in)
+                    unordered_set<Condition, ConditionHasher, ConditionComparator> state_in, 
+                    int id)
                     {
                         this->prev_action = prev_action_in;
                         this->prev_action_inputs = prev_action_inputs_in;
                         this->state = state_in;
                         this->parent = parent_in;
+                        this->id = id;
                     }
                 
                 void update_f()
@@ -1015,6 +1020,22 @@ class symbo_planner
                     }
                         return false;
                 }
+
+                void print_state()
+                {
+                    // sort(state.begin(), state.end());
+                    printf("Node %d, State: ", this->id);
+                    for(auto cond: state)
+                    {
+                        cout << cond.toString() << ", ";
+                    }
+                    printf("\n");
+                }
+
+                int get_id()
+                {
+                    return this->id;
+                }
         };
 
         struct compareFvals
@@ -1033,29 +1054,67 @@ class symbo_planner
             }     
         };
         // sets which automatically sorts 
-        set<symbo_node*, compareFvals> open_list;
+        // set<symbo_node*, compareFvals> open_list;
+        std::priority_queue<symbo_node*, std::vector<symbo_node*>, compareFvals> open_list; 
+        unordered_set<symbo_node*> closed_list;
         unordered_set<symbo_node*> tree;
         unordered_set<Condition, ConditionHasher, ConditionComparator> start_condition;
         unordered_set<Condition, ConditionHasher, ConditionComparator> goal_condition; 
         vector<string> symbols; //vector instead of unordered set for ease of indexing in generating combinations
         unordered_set<Action, ActionHasher, ActionComparator> actions;
+        bool goal_found = false;
+        int id_tracker = 0; 
 
         symbo_node* get_next_from_open()
         {
             //pointer dissociates from iterator
-            symbo_node* node = *open_list.begin();
+            // symbo_node* node = *open_list.begin();
             
             //erases value extracted from open list
-            open_list.erase(open_list.begin());
+            // open_list.erase(open_list.begin());
 
+            symbo_node* node = open_list.top();
+            open_list.pop();
             return node;
         }
 
         void add_to_open(symbo_node* node)
         {
-            open_list.insert(node);
+        //     auto result = open_list.insert(node);
+        //     assert(result.first != open_list.end()); // it's a valid iterator
+        //     // assert(*result.first == node);
+        //     if (result.second)
+        //     {
+        //         std::cout << "insert done\n";
+        //     }
+        //     else 
+        //    {
+        //         std::cout << "insert FIALED\n";
+        //    }
+            open_list.push(node);
+            print_open();
         }  
 
+        void print_open()
+        {
+            std::priority_queue<symbo_node*, std::vector<symbo_node*>, compareFvals> temp_OL; 
+
+            printf("Open list: (%d)\n", open_list.size());
+            // for(auto node: open_list)
+            // {
+            //     printf("\t");
+            //     node->print_state();
+            // }
+            
+            while(!temp_OL.empty())
+            {
+                printf("\t");
+                temp_OL.top()->print_state();
+                temp_OL.pop();
+            }
+        }
+
+        //@TODO: Update heuristic function
         //returns the h value of the input node
         int calculate_h(symbo_node* node)
         {
@@ -1103,21 +1162,120 @@ class symbo_planner
                 temp.pop_back();
             }
         }
-
-
-
-    public: 
-        symbo_planner(unordered_set<Condition, ConditionHasher, ConditionComparator> start, 
-            unordered_set<Condition, ConditionHasher, ConditionComparator> goal, 
-            unordered_set<string> sym, 
-            unordered_set<Action, ActionHasher, ActionComparator> actions_in)
+        
+        bool in_closed(symbo_node* node)
+        {
+            for(auto iter : closed_list)
             {
-                this->goal_condition = goal;
-                this->start_condition = start; 
-                this->symbols = uset_to_vec(sym);
-                sort(symbols.begin(),symbols.end() ); //sorts symbols lexicographically so that permutations can take place.
-                this->actions = actions_in;
+                if(node->get_state() == iter->get_state())
+                {
+                    printf("new:    ");
+                    node->print_state();
+                    printf("closed: ");
+                    iter->print_state();
+                    return true;
+
+                }
             }
+            return false;
+        }
+
+        void add_to_closed(symbo_node* node)
+        {
+            closed_list.insert(node);
+        }
+
+        vector<symbo_node*> generate_neighbors(symbo_node* parent_node)
+        {
+            vector<symbo_node*> neighbors; 
+
+            // printf("Generating possible actions for start condition...\n");
+            for(auto act : actions) //iterating over all actions
+            {
+                vector<list<string>> ac_inputs = generate_sym_combos(act.get_num_args());
+                cout << "\nevaluating action " << act.toString() << ", " << act.get_num_args() << " inputs , "<< ac_inputs.size() << " generated combos " << endl;
+                for(auto input: ac_inputs)
+                {
+                    cout << "\t input( ";
+                    for(auto l : input)
+                    {
+                        cout << l << " "; 
+                    }
+                    printf(")\n");
+
+                    if(act.preconditions_satisfied(parent_node->get_state(),input))
+                    {
+                        cout << "\t input ( ";
+                        for(auto l : input)
+                        {
+                            cout << l << " "; 
+                        }
+                        printf(")\n");
+                        unordered_set<Condition, ConditionHasher, ConditionComparator> effect_state = act.execute_action(parent_node->get_state(),input);
+                        symbo_node* node = new symbo_node(act.toString(), input, parent_node, effect_state, id_tracker++); 
+                        if(!in_closed(node)) //evaluate if not in the closed list 
+                        {
+
+                            printf("\t   Adding as valid action/state!\n");
+                            printf("\t   output is: ");
+                            for(auto es : effect_state)
+                            {
+                                cout << " " << es.toString();
+                            }
+                            printf("\n");
+
+                            parent_node->add_child(node); //bidirectionality
+                            neighbors.push_back(node);
+                        }
+                        else
+                        {
+                            cout<< "Node " << node->get_id() << " is in the closed list!!!!!!" << endl;
+                            delete node;
+                        }
+
+                    }
+                }
+            }
+            return neighbors;
+        }
+
+        void evaluate_neighbors(symbo_node* parent_node)
+        {
+            printf("\n-------\nEvaluating (%d)state ", parent_node->get_id());
+            for(auto es : parent_node->get_state())
+            {
+                cout << " " << es.toString();
+            }
+            printf("\n");
+            vector<symbo_node*> neighbors = generate_neighbors(parent_node);
+            for(auto neighbor: neighbors)
+            {
+                update_costs(neighbor, parent_node->get_cost(), calculate_h(neighbor));
+                printf("Adding to open: ");
+                neighbor->print_state(); 
+                add_to_open(neighbor);
+            }
+        }
+
+        void update_costs(symbo_node* node, int cumulative_cost, int heuristic_value)
+        {
+            node->set_cost(cumulative_cost + 1); //assumes that all actions have equal cost
+            node->set_h(heuristic_value);
+        }
+
+        bool is_goal(symbo_node* node)
+        {
+            // return node->get_state() == goal_condition;
+            unordered_set<Condition, ConditionHasher, ConditionComparator> node_cond = node->get_state();
+            for(auto cond : goal_condition)
+            {
+                if(find(node_cond.begin(), node_cond.end(), cond)== node_cond.end()) //fails to find
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
 
         // adapted from https://stackoverflow.com/questions/12991758/creating-all-possible-k-combinations-of-n-items-in-c
         vector<list<string>> generate_sym_combos(int num_symbols)
@@ -1138,40 +1296,55 @@ class symbo_planner
             return combinations;
         }
 
-        vector<symbo_node*> get_neighbors(unordered_set<Condition, ConditionHasher, ConditionComparator> start_cond)
-        {
-            vector<symbo_node*> neighbors; 
+       
 
-            printf("Generating possible actions for start condition...\n");
-            for(auto act : actions) //iterating over all actions
+    public: 
+        symbo_planner(unordered_set<Condition, ConditionHasher, ConditionComparator> start, 
+            unordered_set<Condition, ConditionHasher, ConditionComparator> goal, 
+            unordered_set<string> sym, 
+            unordered_set<Action, ActionHasher, ActionComparator> actions_in)
             {
-                vector<list<string>> ac_inputs = generate_sym_combos(act.get_num_args());
-                cout << "\nevaluating action " << act.toString() << ", " << act.get_num_args() << " inputs , "<< ac_inputs.size() << " generated combos " << endl;
-                for(auto input: ac_inputs)
-                {
-                    // cout << "\t input ( ";
-                    // for(auto l : input)
-                    // {
-                    //     cout << l << " "; 
-                    // }
-                    // printf(")\n");
+                this->goal_condition = goal;
+                this->start_condition = start; 
+                this->symbols = uset_to_vec(sym);
+                sort(symbols.begin(),symbols.end() ); //sorts symbols lexicographically so that permutations can take place.
+                this->actions = actions_in;
+            }
 
-                    if(act.preconditions_satisfied(start_cond,input))
+        void generate_tree()
+        {
+            symbo_node* start = new symbo_node("NONE", {"NONE", "NONE"}, nullptr, start_condition, this->id_tracker++);
+            add_to_open(start);
+
+            while( (open_list.size() != 0) && !goal_found)
+            {
+                symbo_node* current = get_next_from_open();
+                if(!in_closed(current))
+                {
+                    evaluate_neighbors(current);
+                    add_to_closed(current);
+                    if(is_goal(current))
                     {
-                        // cout<< act.toString();
-                        cout << "\t input ( ";
-                        for(auto l : input)
-                        {
-                            cout << l << " "; 
-                        }
-                        printf(")\n");
-                        printf("\t   Condition satisfied!\n");
-                        symbo_node* node = new symbo_node(act.toString(), input, nullptr, start_cond); //update parent argument
-                        neighbors.push_back(node);
+                        goal_found = true;
                     }
                 }
             }
+
+            if(goal_found)
+            {
+                printf("the goal has been found! :D\n");
+            }
+            else if(open_list.size() == 0)
+            {
+                printf("OL size is 0\n");
+            }
+            else
+            {
+                printf("ERROR IDKY\n");
+            }
         }
+
+
 };
 
 list<GroundedAction> planner(Env* env)
@@ -1181,11 +1354,11 @@ list<GroundedAction> planner(Env* env)
 
     printf("\n\n**** Debugging Area **** \n\n");
     // printf("\nChecking the preconditions. Should be satisfied. \n");
-    Action test_action = env->get_action("MoveToTable");
+    // Action test_action = env->get_action("MoveToTable");
 
     // symbolic_planner.generate_sym_combos(test_action.get_num_args());
 
-    symbolic_planner.get_neighbors(env->get_initial_ungrounded());
+    symbolic_planner.generate_tree();
 
     // printf("========\n");
     // printf("Conditions before action: \n");
