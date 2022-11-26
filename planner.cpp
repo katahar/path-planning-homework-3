@@ -940,8 +940,6 @@ Env* create_env(char* filename)
 }
 
 
-
-
 class symbo_planner
 {
     private:
@@ -1020,6 +1018,18 @@ class symbo_planner
                     return prev_action_inputs;
                 }
 
+                void print_full_prev_action_string()
+                {
+                    string prev_action_full = this->get_prev_action();
+                    int substring_ind = prev_action_full.find("(");
+                    cout << prev_action_full.substr(0,substring_ind) << "(";
+                    for(auto in: this->prev_action_inputs)
+                    {
+                        cout << in << ",";
+                    } 
+                    cout << ")     (" << this->get_h() << ")" << endl;
+
+                }
                 vector<symbo_node*> get_children()
                 {
                     return children;
@@ -1092,12 +1102,12 @@ class symbo_planner
             {
                 if(left->get_f() != right->get_f())
                 {
-                    return left->get_f() < right->get_f();
+                    return left->get_f() > right->get_f();
                 }
                 else
                 {
                     //tie-breaking if f is the same
-                    return left->get_h() > right->get_h();
+                    return left->get_h() < right->get_h();
                 }
             }     
         };
@@ -1114,14 +1124,10 @@ class symbo_planner
         chrono::time_point<chrono::system_clock> startTime;
         bool is_heuristic = false;
         int goal_ct = -1;
-
+        symbo_planner* heuristic_planner;
         bool goal_found = false;
         int id_tracker = 0; 
 
-        symbo_planner()
-        {
-
-        }
         symbo_node* get_next_from_open()
         {
             //pointer dissociates from iterator
@@ -1189,13 +1195,18 @@ class symbo_planner
             if(!is_heuristic)
             {
                 // printf("++++++++++++++++++++ HEURISTIC++++++++++++++++\n");
-                symbo_planner heuristic_planner = *this;
-                heuristic_planner.heuristic_reset(node);
-                heuristic_planner.generate_tree();
-                cout << "Heuristic value " << heuristic_planner.get_goal_ct() <<endl;
+                symbo_planner temp = *this;
+                // printf("%s, %d \n", __FUNCTION__, __LINE__);
+                heuristic_planner = &temp;
+                // printf("%s, %d \n", __FUNCTION__, __LINE__);
+                heuristic_planner->heuristic_reset(node);
+                // printf("%s, %d \n", __FUNCTION__, __LINE__);
+                heuristic_planner->generate_tree();
+                // printf("%s, %d \n", __FUNCTION__, __LINE__);
+                // cout << "Heuristic value " << heuristic_planner->get_goal_ct() <<endl;
                 // printf("++++++++++++++++++++ HEURISTIC END++++++++++++++++\n");
 
-                return heuristic_planner.get_goal_ct();
+                return heuristic_planner->get_goal_ct();
             }
             else 
             {
@@ -1210,7 +1221,7 @@ class symbo_planner
             unordered_set<Condition, ConditionHasher, ConditionComparator> node_cond = node->get_state();
             for(auto cond : goal_condition)
             {
-                if(find(node_cond.begin(), node_cond.end(), cond)!= node_cond.end()) //condition satisfied
+                if(find(node_cond.begin(), node_cond.end(), cond) == node_cond.end()) //condition satisfied
                 {
                     count++;
                 }
@@ -1364,6 +1375,7 @@ class symbo_planner
             for(auto neighbor: neighbors)
             {
                 update_costs(neighbor, parent_node->get_cost(), calculate_h(neighbor));
+                // neighbor->print_full_prev_action_string();
                 // printf("Adding to open: ");
                 // neighbor->print_state(); 
                 add_to_open(neighbor);
@@ -1429,8 +1441,13 @@ class symbo_planner
                     int substring_ind = prev_action_full.find("(");
                     tuple<string, list<string>> act_pair(prev_action_full.substr(0,substring_ind), current->get_prev_inputs());
                     plan_vec.insert(plan_vec.begin(), act_pair);
-                    // cout << "pushing back node  " << current->get_count() << endl;
-
+                    // cout << get<0>(act_pair) << "(";
+                    // for(auto in: get<1>(act_pair))
+                    // {
+                    //     cout << in << ",";
+                    // } 
+                    // cout << ")     (" << current->get_h() << ")" << endl;
+                    // current->print_full_prev_action_string();
 
                     current = prev;
                     prev = current->get_parent();
@@ -1439,6 +1456,8 @@ class symbo_planner
                     int substring_ind = prev_action_full.find("(");
                     tuple<string, list<string>> act_pair(prev_action_full.substr(0,substring_ind), current->get_prev_inputs());
                     plan_vec.insert(plan_vec.begin(), act_pair);
+                    // current->print_full_prev_action_string();
+
                     // cout << "pushing back node  " << current->get_count() << endl;
 
 
@@ -1483,6 +1502,16 @@ class symbo_planner
                 sort(symbols.begin(),symbols.end() ); //sorts symbols lexicographically so that permutations can take place.
                 this->actions = actions_in;
             }
+        
+        // symbo_planner(unordered_set<Condition, ConditionHasher, ConditionComparator> goal, 
+        //     unordered_set<string> sym, 
+        //     unordered_set<Action, ActionHasher, ActionComparator> actions_in)
+        // {
+        //     this->goal_condition = goal;
+        //     this->symbols = uset_to_vec(sym);
+        //     sort(symbols.begin(),symbols.end() ); //sorts symbols lexicographically so that permutations can take place.
+        //     this->actions = actions_in;
+        // }
 
         void generate_tree()
         {
@@ -1533,6 +1562,8 @@ class symbo_planner
         {
             return this->final_plan;
         }
+
+        
 
         int get_goal_ct()
         {
