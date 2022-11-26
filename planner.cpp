@@ -1374,7 +1374,7 @@ class symbo_planner
             vector<symbo_node*> neighbors = generate_neighbors(parent_node);
             for(auto neighbor: neighbors)
             {
-                update_costs(neighbor, parent_node->get_cost(), calculate_h(neighbor));
+                update_costs(neighbor, parent_node->get_cost(), 2*calculate_h(neighbor));
                 // neighbor->print_full_prev_action_string();
                 // printf("Adding to open: ");
                 // neighbor->print_state(); 
