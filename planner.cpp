@@ -1192,6 +1192,8 @@ class symbo_planner
         //returns the h value of the input node
         int calculate_h(symbo_node* node)
         {
+            // return 0;
+            
             if(!is_heuristic && false) //removing for speed
             {
                 // printf("++++++++++++++++++++ HEURISTIC++++++++++++++++\n");
@@ -1471,7 +1473,7 @@ class symbo_planner
                 {
                     final_plan.push_back(GroundedAction(get<0>(ac_pr), get<1>(ac_pr)));
                 }
-                printf("Population complete \n");
+                printf("Population complete (%d expanded states) \n", closed_list.size());
                 // return actions;
             }
             else 
